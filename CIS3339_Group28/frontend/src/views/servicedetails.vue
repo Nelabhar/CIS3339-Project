@@ -76,7 +76,7 @@
           </div>
           <!--Go back button-->
           <div class="flex justify-between mt-20 mr-20">
-            <button type="reset" class="border border-red-700 bg-white text-red-700 rounded" @click="this.$router.back()">
+            <button type="reset" class="border border-red-700 bg-white text-red-700 rounded" @click="router.back()">
               Go back
             </button>
           </div>
@@ -101,7 +101,7 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-300">
-            <tr @click="$router.push({name: 'eventdetails', params: { id: event._id } })" 
+            <tr @click="goToEvent(event._id)" 
             v-for="event in events" :key="event._id" class="cursor-pointer"
               :class="{ 'hoverRow': hoverId === event._id }" @mouseenter="hoverId = event._id"
               @mouseleave="hoverId = null">
@@ -116,104 +116,105 @@
   </main>
 </template>
 
-<script>
+<script setup>
+// MIGRATION (Sprint 2): Options API -> Composition API (<script setup>)
+// Removed: export default { data(), setup(), validations(), mounted(), methods }
+import { ref, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import useVuelidate from '@vuelidate/core'
 import { required } from '@vuelidate/validators'
-import { useLoggedInUserStore } from "../store/loggedInUser";
+import { useLoggedInUserStore } from '../store/loggedInUser'
 import { getServiceById, getEventsByServiceId, updateService, deleteService } from '../api/api'
 import { useToast } from 'vue-toastification'
+// MIGRATION: formatDate was a copy-pasted method; now imported from a shared util
+import { formatDate } from '../utils/formatDate'
 
 //Notifications
 const toast = useToast()
 
-export default {
-  data() {
-    return {
-      //variable to store service information
-      service: {
-        name: null,
-        description: null,
-        status: null
-      },
-      // all events that host the service
-      events: [],
-      // variable stores the ID of the row that the mouse is currently hovering over (to highlight the row red)
-      hoverId: null,
-    }
-  },
-  setup() {
-    // register Vuelidate and loggedIn store
-    const v$ = useVuelidate();
-    const user = useLoggedInUserStore();
-    return { v$, user };
-  },
-  validations() {
-    // validations      
-    return {
-      service: {
-        name: { required },
-      },
-    };
-  },
-  async mounted() {
-    // when component is mounted, data is loaded
-    try {
-      const [serviceResponse, eventsResponse] = await Promise.all([
-        getServiceById(this.$route.params.id),
-        getEventsByServiceId(this.$route.params.id),
-      ]);
+// MIGRATION: this.$route -> useRoute(), this.$router -> useRouter()
+const route = useRoute()
+const router = useRouter()
 
-      this.service = serviceResponse;
-      this.events = eventsResponse;
+// MIGRATION: setup() { const user = ...; return { user } } -> plain const
+const user = useLoggedInUserStore()
 
-    } catch (error) {
-      toast.error(error);
-    }
-  },
-  methods: {
-    // method to format the event dates
-    formatDate(date) {
-      const isoDate = new Date(date);
-      const year = isoDate.getUTCFullYear();
-      const month = String(isoDate.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(isoDate.getUTCDate()).padStart(2, '0');
-      return `${month}/${day}/${year}`;
-    },
+// MIGRATION: data() -> ref()
+//variable to store service information
+const service = ref({
+  name: null,
+  description: null,
+  status: null
+})
+// all events that host the service
+const events = ref([])
+// variable stores the ID of the row that the mouse is currently hovering over (to highlight the row red)
+const hoverId = ref(null)
 
-    // method called when user attempts to update the service
-    async submitServiceUpdate() {
-      // Trigger validation
-      this.v$.$validate();
-
-      if (this.v$.$error) {
-        // Form is invalid, do not proceed
-        return;
-      }
-
-      try {
-        const response = await updateService(this.$route.params.id, this.service);
-        this.$router.push('/findservice')
-        toast.success(response)
-      } catch (error) {
-        toast.error('error updating service', error)
-      }
-    },
-
-    // method to make the API call to delete the service - can only be deleted service is not used in any event
-    async submitDeleteService() {
-      try {
-        if (this.events.length != 0)
-        {
-          toast.info('Service can not be deleted since it is being used by events.')
-          return
-        }
-        const response = await deleteService(this.$route.params.id);
-        toast.success(response)
-        this.$router.push('/findservice')
-      } catch (error) {
-        toast.error(error)
-      }
-    },
+// MIGRATION: validations() option -> plain rules object
+const rules = {
+  service: {
+    name: { required }
   }
 }
+
+// MIGRATION: useVuelidate() -> useVuelidate(rules, state)
+const v$ = useVuelidate(rules, { service })
+
+// MIGRATION: methods: { submitServiceUpdate() } -> plain async function
+// method called when user attempts to update the service
+async function submitServiceUpdate() {
+  // Trigger validation
+  const isValid = await v$.value.$validate()
+
+  if (!isValid) {
+    // Form is invalid, do not proceed
+    return
+  }
+
+  try {
+    const response = await updateService(route.params.id, service.value)
+    router.push('/findservice')
+    toast.success(response)
+  } catch (error) {
+    toast.error('error updating service', error)
+  }
+}
+
+// MIGRATION: methods: { submitDeleteService() } -> plain async function
+// method to make the API call to delete the service - can only be deleted service is not used in any event
+async function submitDeleteService() {
+  try {
+    if (events.value.length !== 0) {
+      toast.info('Service can not be deleted since it is being used by events.')
+      return
+    }
+    const response = await deleteService(route.params.id)
+    toast.success(response)
+    router.push('/findservice')
+  } catch (error) {
+    toast.error(error)
+  }
+}
+
+// MIGRATION: new function - replaces inline $router.push(...) in the template
+function goToEvent(id) {
+  router.push({ name: 'eventdetails', params: { id } })
+}
+
+// MIGRATION: async mounted() -> onMounted()
+// when component is mounted, data is loaded
+onMounted(async () => {
+  try {
+    const [serviceResponse, eventsResponse] = await Promise.all([
+      getServiceById(route.params.id),
+      getEventsByServiceId(route.params.id)
+    ])
+
+    service.value = serviceResponse
+    events.value = eventsResponse
+  } catch (error) {
+    toast.error(error)
+  }
+})
 </script>
