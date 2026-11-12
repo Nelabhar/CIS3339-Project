@@ -175,7 +175,11 @@
   </main>
 </template>
 
-<script>
+<script setup>
+// MIGRATION (Sprint 2): Options API -> Composition API (<script setup>)
+// Removed: export default { data(), setup(), validations(), methods }
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 //import functionalities for validation
 import useVuelidate from '@vuelidate/core'
 import { required, email, numeric, minLength, maxLength } from '@vuelidate/validators'
@@ -185,74 +189,73 @@ import { useToast } from 'vue-toastification'
 //Notifications
 const toast = useToast()
 
-export default {
-  data() {
-    return {
-      //client variable to hold new client information
-      client: {
-        firstName: null,
-        middleName: null,
-        lastName: null,
-        email: null,
-        phoneNumber: {
-          primary: null,
-          alternate: null
-        },
-        address: {
-          line1: null,
-          line2: null,
-          city: null,
-          county: null,
-          zip: null
-        },
-      }
-    }
-  },
-  setup() {
-    // Register Vuelidate
-    const v$ = useVuelidate();
-    return { v$ };
-  },
-  validations() {
-    // validations for client
-    return {
-      client: {
-        firstName: { required },
-        lastName: { required },
-        email: { required, email },
-        phoneNumber: {
-          primary: {
-            required,
-            numeric,
-            minLength: minLength(10),
-            maxLength: maxLength(10),
-          },
-        },
-        address: {
-          city: { required },
-        },
-      },
-    };
-  },
-  methods: {
-    // method called when user submits the form
-    async submitForm() {
-      // Trigger validation
-      this.v$.$validate();
+// MIGRATION: this.$router -> useRouter()
+const router = useRouter()
 
-      if (this.v$.$error) {
-        // Form is invalid, do not proceed
-        return;
-      }
+// MIGRATION: data() -> ref()
+//client variable to hold new client information
+const client = ref({
+  firstName: null,
+  middleName: null,
+  lastName: null,
+  email: null,
+  phoneNumber: {
+    primary: null,
+    alternate: null
+  },
+  address: {
+    line1: null,
+    line2: null,
+    city: null,
+    county: null,
+    zip: null
+  }
+})
 
-      try {
-        const response = await createClient(this.client);
-        this.$router.push('/findclient')
-        toast.success(response)
-      } catch (error) {
-        toast.error(error)
+// MIGRATION: validations() option -> plain rules object
+// validations for client
+const rules = {
+  client: {
+    firstName: { required },
+    lastName: { required },
+    email: { required, email },
+    phoneNumber: {
+      primary: {
+        required,
+        numeric,
+        minLength: minLength(10),
+        maxLength: maxLength(10)
       }
     },
+    address: {
+      city: { required }
+    }
+  }
+}
+
+// MIGRATION: useVuelidate() -> useVuelidate(rules, state)
+// Without data()/validations() options, Vuelidate must be given both explicitly.
+const v$ = useVuelidate(rules, { client })
+
+// MIGRATION: methods: { submitForm() } -> plain async function
+// method called when user submits the form
+async function submitForm() {
+  // Trigger validation
+  // MIGRATION: this.v$.$validate() -> v$.value.$validate()
+  const isValid = await v$.value.$validate()
+
+  if (!isValid) {
+    // Form is invalid, do not proceed
+    return
+  }
+
+  try {
+    // MIGRATION: this.client -> client.value
+    const response = await createClient(client.value)
+    router.push('/findclient')
+    toast.success(response)
+  } catch (error) {
+    toast.error(error)
   }
 }
 </script>
