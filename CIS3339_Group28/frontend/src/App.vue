@@ -5,7 +5,7 @@
     <div id="_container" class="min-h-screen">
       <header class="w-full">
         <section class="text-center">
-          <img class="m-auto" src="@\assets\DanPersona.svg" />
+          <img class="m-auto" src="@/assets/DanPersona.svg" alt="Data Platform logo" />
         </section>
         <!--Navigation bar-->
         <nav class="mt-10">
@@ -89,7 +89,11 @@
   </main>
 </template>
 
-<script>
+<script setup>
+// MIGRATION (Sprint 2): Options API -> Composition API (<script setup>)
+// Before: App.vue mixed setup() (store), data() (orgName), created() (load org
+// name) and methods (logout). All of it is now in this single block.
+import { ref, onMounted } from 'vue'
 import { useLoggedInUserStore } from './store/loggedInUser'
 import { getOrgName } from './api/api'
 import { useToast } from 'vue-toastification'
@@ -97,34 +101,28 @@ import { useToast } from 'vue-toastification'
 //Notifications
 const toast = useToast()
 
-export default {
-  setup() {
-    const user = useLoggedInUserStore();
-    return { user };
-  },
-  data() {
-    return {
-      orgName: "Dataplatform",
-    };
-  },
-  async created() {
-    try {
-      this.orgName = await getOrgName();
-    } catch {
-      throw (error)
-    }
-  },
-  methods: {
-    logout() {
-      try {
-        this.$store.dispatch('clearSessionData');
-        this.$router.push('/')
-      } catch (error) {
-        toast.error('logout error', error)
-      }
-    },
+// MIGRATION: setup() { const user = ...; return { user } } -> plain const
+const user = useLoggedInUserStore()
+
+// MIGRATION: data() { return { orgName: 'Dataplatform' } } -> ref()
+const orgName = ref('Dataplatform')
+
+// MIGRATION: async created() -> onMounted()
+// Also fixes a template bug: the old `catch { throw (error) }` referenced an
+// undefined variable, which turned a failed request into a ReferenceError.
+// Now the default name stays and the user gets a readable notice.
+onMounted(async () => {
+  try {
+    orgName.value = await getOrgName()
+  } catch (error) {
+    toast.error('Unable to load organization name')
   }
-}
+})
+
+// MIGRATION: methods: { logout() } was removed.
+// It called this.$store.dispatch('clearSessionData'), which is dead Vuex code
+// (this project uses Pinia and has no Vuex store), and it was never used: the
+// Logout link in the template already calls user.logout from the Pinia store.
 </script>
 
 <style scoped>
