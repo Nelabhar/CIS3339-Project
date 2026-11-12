@@ -24,6 +24,7 @@
             </thead>
             <tbody class="divide-y divide-gray-300"> 
               <tr
+                class="cursor-pointer"
                 @click="editEvent(event._id)"
                 v-for="event in recentEvents"
                 :key="event._id"
@@ -124,109 +125,90 @@
   </main>
 </template>
 
-<script>
+<script setup>
+// MIGRATION (Sprint 2): Options API -> Composition API (<script setup>)
+// Removed: export default { components, data(), mounted(), methods }
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+// MIGRATION: components: { AttendanceChart, ZipChart } is no longer needed.
+// In <script setup>, an imported component can be used in the template directly.
 import AttendanceChart from '../components/barChart.vue'
 import ZipChart from '../components/donutZipChart.vue'
 import { getAttendance, getClientsByZipCode } from '../api/api'
+// MIGRATION: formatDate was a copy-pasted method; now imported from a shared util
+import { formatDate } from '../utils/formatDate'
 
-export default {
-  components: {
-    AttendanceChart,
-    ZipChart,
-  },
-  data() {
-    return {
-      recentEvents: [],
-      zips: [],
-      labels: [],
-      chartData: [],
-      zipLabels: [],
-      zipChartData: [],
-      loading: false,
-      error: null,
-      zipLoading: false,
-      zipError: null
-    }
-  },
-  mounted() {
-    this.getAttendanceData()
-    this.getZipData()
-  },
-  methods: {
-    async getAttendanceData() {
-      try {
-        this.error = null
-        this.loading = true
-        
-        const attendance = await getAttendance();
-        this.recentEvents = attendance;
-        this.labels = attendance.map(
-          (item) => `${item.name} (${this.formatDate(item.date)})`
-        )
-        this.chartData = attendance.map((item) => item.attendees.length)
-      } catch (err) {
-        if (err.response) {
-          // client received an error response (5xx, 4xx)
-          this.error = {
-            title: 'Server Response',
-            message: err.message
-          }
-        } else if (err.request) {
-          // client never received a response, or request never left
-          this.error = {
-            title: 'Unable to Reach Server',
-            message: err.message
-          }
-        } else {
-          // There's probably an error in your code
-          this.error = {
-            title: 'Application Error',
-            message: err.message
-          }
-        }
-      }
-      this.loading = false
-    },
-    async getZipData() {
-      try {
-        this.zipError = null
-        this.zipLoading = true
-        
-        const zipdata = await getClientsByZipCode();
-        this.zips = zipdata;
-        this.zipLabels = zipdata.map((item) => item._id)
-        this.zipChartData = zipdata.map((item) => item.count)
-      } catch (err) {
-        if (err.response) {
-          // client received an error response (5xx, 4xx)
-          this.zipError = {
-            title: 'Server Response',
-            message: err.message
-          }
-        } else if (err.request) {
-          // client never received a response, or request never left
-          this.zipError = {
-            title: 'Unable to Reach Server',
-            message: err.message
-          }
-        } else {
-          // There's probably an error in your code
-          this.zipError = {
-            title: 'Application Error',
-            message: err.message
-          }
-        }
-      }
-      this.zipLoading = false
-    },
-    // method called to format the event date
-    formatDate(date) {
-      const isoDate = new Date(date);
-      const year = isoDate.getUTCFullYear();
-      const month = String(isoDate.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(isoDate.getUTCDate()).padStart(2, '0');
-      return `${month}/${day}/${year}`;
-    },
+const router = useRouter()
+
+// MIGRATION: data() -> one ref() per value
+const recentEvents = ref([])
+const zips = ref([])
+const labels = ref([])
+const chartData = ref([])
+const zipLabels = ref([])
+const zipChartData = ref([])
+const loading = ref(false)
+const error = ref(null)
+const zipLoading = ref(false)
+const zipError = ref(null)
+
+// Helper that turns an axios error into the { title, message } shape the template shows.
+// MIGRATION: this logic was duplicated in both methods; it is now one function.
+function toErrorMessage(err) {
+  if (err.response) {
+    // client received an error response (5xx, 4xx)
+    return { title: 'Server Response', message: err.message }
+  } else if (err.request) {
+    // client never received a response, or request never left
+    return { title: 'Unable to Reach Server', message: err.message }
   }
+  // There's probably an error in your code
+  return { title: 'Application Error', message: err.message }
 }
+
+// MIGRATION: methods: { getAttendanceData() } -> plain async function
+async function getAttendanceData() {
+  try {
+    error.value = null
+    loading.value = true
+
+    const attendance = await getAttendance()
+    recentEvents.value = attendance
+    // MIGRATION: this.formatDate(...) -> imported formatDate(...)
+    labels.value = attendance.map((item) => `${item.name} (${formatDate(item.date)})`)
+    chartData.value = attendance.map((item) => item.attendees.length)
+  } catch (err) {
+    error.value = toErrorMessage(err)
+  }
+  loading.value = false
+}
+
+// MIGRATION: methods: { getZipData() } -> plain async function
+async function getZipData() {
+  try {
+    zipError.value = null
+    zipLoading.value = true
+
+    const zipdata = await getClientsByZipCode()
+    zips.value = zipdata
+    zipLabels.value = zipdata.map((item) => item._id)
+    zipChartData.value = zipdata.map((item) => item.count)
+  } catch (err) {
+    zipError.value = toErrorMessage(err)
+  }
+  zipLoading.value = false
+}
+
+// MIGRATION: the template called editEvent(event._id) but the Options API
+// component never defined it, so clicking a row threw an error. It is now
+// defined and opens that event's details page.
+function editEvent(id) {
+  router.push({ name: 'eventdetails', params: { id } })
+}
+
+// MIGRATION: mounted() { this.getAttendanceData(); this.getZipData() } -> onMounted()
+onMounted(() => {
+  getAttendanceData()
+  getZipData()
+})
 </script>
