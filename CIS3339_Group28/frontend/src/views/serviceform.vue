@@ -76,8 +76,12 @@
     </main>
 </template>
 
-<script>
+<script setup>
+// MIGRATION (Sprint 2): Options API -> Composition API (<script setup>)
+// Removed: export default { data(), setup(), validations(), methods }
 // import vuelidate validations
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import useVuelidate from '@vuelidate/core'
 import { required } from '@vuelidate/validators'
 import { createService } from '../api/api'
@@ -86,49 +90,49 @@ import { useToast } from 'vue-toastification'
 //Notifications
 const toast = useToast()
 
-export default {
-    data() {
-        return {
-            //variable to hold new service information
-            service: {
-                name: null,
-                description: null,
-                status: "Active",
-            },
-        }
-    },
-    setup() {
-        // Register Vuelidate
-        const v$ = useVuelidate();
-        return { v$ };
-    },
-    validations() {
-        // validations for service
-        return {
-            service: {
-                name: { required },
-            }
-        }
-    },
-    methods: {
-        // method called when user attempts to create new service
-        async handleSubmitForm() {
-            // Trigger validation
-            this.v$.$validate();
+// MIGRATION: this.$router -> useRouter() (there is no `this` in <script setup>)
+const router = useRouter()
 
-            if (this.v$.$error) {
-                // Form is invalid, do not proceed
-                return;
-            }
+// MIGRATION: data() -> ref()
+//variable to hold new service information
+const service = ref({
+  name: null,
+  description: null,
+  status: 'Active'
+})
 
-            try {
-                const response = await createService(this.service);
-                toast.success(response)
-                this.$router.push('/findservice')
-            } catch (error) {
-                toast.error('Error creating new service:', error)
-            }
-        },
-    }
+// MIGRATION: validations() option -> a plain rules object
+// validations for service
+const rules = {
+  service: {
+    name: { required }
+  }
+}
+
+// MIGRATION: useVuelidate() with no arguments only works when Vuelidate can read
+// `validations()` and `data()` from the Options API component. Now we pass the
+// rules and the state explicitly.
+const v$ = useVuelidate(rules, { service })
+
+// MIGRATION: methods: { handleSubmitForm() } -> plain async function
+// method called when user attempts to create new service
+async function handleSubmitForm() {
+  // Trigger validation
+  // MIGRATION: this.v$ -> v$.value (v$ is a ref-like computed in script)
+  const isValid = await v$.value.$validate()
+
+  if (!isValid) {
+    // Form is invalid, do not proceed
+    return
+  }
+
+  try {
+    // MIGRATION: this.service -> service.value
+    const response = await createService(service.value)
+    toast.success(response)
+    router.push('/findservice')
+  } catch (error) {
+    toast.error('Error creating new service:', error)
+  }
 }
 </script>
